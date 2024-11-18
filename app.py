@@ -156,14 +156,19 @@ class Database:
                 return pd.read_sql_query(query, conn)
 
 def setup_driver():
-    service = Service(CHROME_DRIVER_PATH)
     chrome_options = Options()
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
-    return webdriver.Chrome(service=service, options=chrome_options)
-
+    
+    try:
+        return webdriver.Chrome(options=chrome_options)
+    except Exception as e:
+        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
+        return None
 def handle_cookies(driver):
     try:
         wait = WebDriverWait(driver, 10)
