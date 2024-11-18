@@ -13,6 +13,9 @@ import time
 from datetime import datetime
 import pandas as pd
 import plotly.express as px
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.utils import ChromeType
 
 # Configuration de base
 st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
@@ -162,7 +165,16 @@ def setup_driver():
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.binary_location = "/usr/bin/chromium-browser"
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
+
+    try:
+        service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        return driver
+    except Exception as e:
+        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
+        return None
     
     try:
         return webdriver.Chrome(options=chrome_options)
