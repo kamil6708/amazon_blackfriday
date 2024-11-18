@@ -13,10 +13,10 @@ import time
 import pandas as pd
 import plotly.express as px
 
-# Configuration de base
-st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
+# Configuration Streamlit
+st.set_page_config(page_title="Suivi des Prix Amazon.fr", layout="wide")
 
-# Constantes
+# Produits suivis sur Amazon.fr
 PRODUCTS = {
     "manette": {
         "url": "https://www.amazon.fr/Manette-Xbox-rouge-sans-Fil/dp/B08SRMPBRF/",
@@ -32,11 +32,13 @@ PRODUCTS = {
     },
     "kit_charge": {
         "url": "https://www.amazon.fr/Xbox-Play-Charge-Kit-voor/dp/B08FCXLB8Z/",
-        "name": "Kit charge Xbox Series"
+        "name": "Kit Charge Xbox Series"
     }
 }
 
 class Database:
+    """Gestion de la base de données pour sauvegarder les prix."""
+
     def __init__(self):
         self.is_local = 'DATABASE_URL' not in os.environ
         if self.is_local:
@@ -47,6 +49,7 @@ class Database:
             self.init_postgres()
 
     def init_sqlite(self):
+        """Initialisation de la base SQLite."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -72,6 +75,7 @@ class Database:
             conn.commit()
 
     def init_postgres(self):
+        """Initialisation de la base PostgreSQL."""
         with psycopg2.connect(self.conn_string) as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
@@ -100,6 +104,7 @@ class Database:
                 conn.commit()
 
     def save_prices(self, prices):
+        """Sauvegarde des prix dans la base de données."""
         if self.is_local:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -128,6 +133,7 @@ class Database:
                     conn.commit()
 
     def get_price_history(self):
+        """Récupère l'historique des prix."""
         if self.is_local:
             with sqlite3.connect(self.db_path) as conn:
                 query = '''
@@ -154,6 +160,7 @@ class Database:
                 return pd.read_sql_query(query, conn)
 
 def track_current_prices():
+    """Scraping des prix actuels sur Amazon.fr."""
     driver = setup_driver()
     if not driver:
         st.error("Impossible d'initialiser le navigateur")
@@ -165,12 +172,11 @@ def track_current_prices():
         for product in PRODUCTS.values():
             try:
                 driver.get(product['url'])
-                time.sleep(5)
+                time.sleep(3)
                 
                 selectors = [
-                    ".a-price .a-offscreen",
-                    "span.a-price-whole",
-                    "#corePrice_feature_div .a-price-whole"
+                    ".a-price .a-offscreen",  # Prix principal
+                    "#corePrice_feature_div .a-price-whole",  # Ancien prix (si promotion)
                 ]
                 
                 price = None
@@ -199,6 +205,7 @@ def track_current_prices():
     return current_prices
 
 def setup_driver():
+    """Configuration du navigateur (WebDriver)."""
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -207,15 +214,15 @@ def setup_driver():
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     
     try:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
         return driver
     except Exception as e:
         st.error(f"Erreur lors de l'initialisation du driver : {e}")
         return None
 
 def main():
-    st.title("📊 Suivi des Prix Amazon")
+    """Interface utilisateur principale."""
+    st.title("📊 Suivi des Prix sur Amazon.fr")
     db = Database()
 
     if st.button("🔄 Actualiser les prix"):
@@ -228,6 +235,7 @@ def main():
     display_price_history(db)
 
 def display_price_history(db):
+    """Affiche l'historique des prix."""
     history_df = db.get_price_history()
     
     if not history_df.empty:
