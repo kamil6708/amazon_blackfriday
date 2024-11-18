@@ -205,19 +205,19 @@ def track_current_prices():
     return current_prices
 
 def setup_driver():
-    """Configuration du navigateur (WebDriver)."""
-    chrome_options = Options()
+    chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.binary_location = "/usr/bin/chromium"
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
     
     try:
-        driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
+        driver = webdriver.Chrome(options=chrome_options)
         return driver
     except Exception as e:
-        st.error(f"Erreur lors de l'initialisation du driver : {e}")
+        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
         return None
 
 def main():
