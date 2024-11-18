@@ -155,21 +155,6 @@ class Database:
                 '''
                 return pd.read_sql_query(query, conn)
 
-def setup_driver():
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.binary_location = "/usr/bin/chromium"
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
-    
-    try:
-        driver = webdriver.Chrome(options=chrome_options)
-        return driver
-    except Exception as e:
-        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
-        return None
 
 def handle_cookies(driver):
     try:
@@ -208,38 +193,56 @@ def track_current_prices():
         return None
         
     current_prices = []
+    cookies_handled = False
     
     try:
         for product in PRODUCTS.values():
             try:
-                driver.get(product['url'])
-                time.sleep(5)  # Augmenté à 5 secondes
-                
-                wait = WebDriverWait(driver, 20)  # Augmenté à 20 secondes
-                
-                # Gérer les cookies une seule fois par session
-                try:
-                    cookie_button = wait.until(EC.presence_of_element_located((By.ID, "sp-cc-accept")))
-                    cookie_button.click()
-                    time.sleep(2)
-                except:
-                    pass
-                
-                # Attendre que le prix soit chargé
-                price_element = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".a-price .a-offscreen"))
-                )
-                price_text = price_element.get_attribute("textContent")
-                
-                # Convertir le prix (format "00,00 €")
-                price = float(price_text.replace("€", "").replace(",", ".").strip())
-                price = round(price, 2)
-                
-                current_prices.append({
-                    'Produit': product['name'],
-                    'Prix': price
-                })
-                
+                for attempt in range(3):
+                    try:
+                        driver.get(product['url'])
+                        time.sleep(5)
+                        
+                        if not cookies_handled:
+                            try:
+                                cookie_button = WebDriverWait(driver, 10).until(
+                                    EC.element_to_be_clickable((By.ID, "sp-cc-accept"))
+                                )
+                                cookie_button.click()
+                                time.sleep(2)
+                                cookies_handled = True
+                            except:
+                                pass
+
+                        selectors = [
+                            ".a-price .a-offscreen",
+                            "span.a-price-whole",
+                            "#corePrice_feature_div .a-price-whole"
+                        ]
+                        
+                        price = None
+                        for selector in selectors:
+                            try:
+                                element = WebDriverWait(driver, 10).until(
+                                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                                )
+                                price_text = element.get_attribute("textContent") or element.text
+                                price = float(price_text.replace("€", "").replace(",", ".").strip())
+                                break
+                            except:
+                                continue
+                                
+                        if price:
+                            current_prices.append({
+                                'Produit': product['name'],
+                                'Prix': round(price, 2)
+                            })
+                            break
+                            
+                    except Exception as e:
+                        if attempt == 2:
+                            st.error(f"Erreur pour {product['name']}: {str(e)}")
+                            
             except Exception as e:
                 st.error(f"Erreur pour {product['name']}: {str(e)}")
                 continue
@@ -249,6 +252,22 @@ def track_current_prices():
     finally:
         if driver:
             driver.quit()
+
+def setup_driver():
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.binary_location = "/usr/bin/chromium"
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
+    
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
+    except Exception as e:
+        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
+        return None
 
 def main():
     st.title("📊 Suivi des Prix Amazon")
