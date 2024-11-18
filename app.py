@@ -170,6 +170,7 @@ def setup_driver():
     except Exception as e:
         st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
         return None
+
 def handle_cookies(driver):
     try:
         wait = WebDriverWait(driver, 10)
