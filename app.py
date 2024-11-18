@@ -9,19 +9,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 import time
 from datetime import datetime
 import pandas as pd
 import plotly.express as px
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.utils import ChromeType
 
 # Configuration de base
 st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
 
 # Constantes
-CHROME_DRIVER_PATH =  '/usr/local/bin/chromedriver'
 PRODUCTS = {
     "manette": {
         "url": "https://www.amazon.fr/Manette-Xbox-rouge-sans-Fil/dp/B08SRMPBRF/",
@@ -159,28 +156,23 @@ class Database:
                 return pd.read_sql_query(query, conn)
 
 def setup_driver():
-    chrome_options = Options()
+    chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.binary_location = "/usr/bin/chromium-browser"
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.binary_location = "/usr/bin/chromium"
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
-
-    try:
-        service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        return driver
-    except Exception as e:
-        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
-        return None
     
     try:
-        return webdriver.Chrome(options=chrome_options)
+        service = Service(ChromeDriverManager().install())
+        return webdriver.Chrome(service=service, options=chrome_options)
     except Exception as e:
         st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
         return None
+
 def handle_cookies(driver):
     try:
         wait = WebDriverWait(driver, 10)
@@ -253,7 +245,8 @@ def track_current_prices():
         return current_prices
         
     finally:
-        driver.quit()
+        if driver:
+            driver.quit()
 
 def main():
     st.title("📊 Suivi des Prix Amazon")
