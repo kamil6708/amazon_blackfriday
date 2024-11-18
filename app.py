@@ -203,32 +203,36 @@ def change_location(driver, postal_code="94310"):
 
 def track_current_prices():
     driver = setup_driver()
+    if not driver:
+        st.error("Impossible d'initialiser le navigateur")
+        return None
+        
     current_prices = []
-    location_set = False
-    cookies_accepted = False
     
     try:
-        first_product = list(PRODUCTS.values())[0]
-        driver.get(first_product['url'])
-        time.sleep(3)
-        
-        if not cookies_accepted:
-            handle_cookies(driver)
-        if not location_set:
-            change_location(driver)
-        
         for product in PRODUCTS.values():
             try:
                 driver.get(product['url'])
-                time.sleep(2)
+                time.sleep(5)  # Augmenté à 5 secondes
                 
-                wait = WebDriverWait(driver, 10)
-                price_whole = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "span.a-price-whole"))
+                wait = WebDriverWait(driver, 20)  # Augmenté à 20 secondes
+                
+                # Gérer les cookies une seule fois par session
+                try:
+                    cookie_button = wait.until(EC.presence_of_element_located((By.ID, "sp-cc-accept")))
+                    cookie_button.click()
+                    time.sleep(2)
+                except:
+                    pass
+                
+                # Attendre que le prix soit chargé
+                price_element = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".a-price .a-offscreen"))
                 )
-                price_fraction = driver.find_element(By.CSS_SELECTOR, "span.a-price-fraction")
+                price_text = price_element.get_attribute("textContent")
                 
-                price = float(f"{price_whole.text}.{price_fraction.text}")
+                # Convertir le prix (format "00,00 €")
+                price = float(price_text.replace("€", "").replace(",", ".").strip())
                 price = round(price, 2)
                 
                 current_prices.append({
@@ -239,7 +243,7 @@ def track_current_prices():
             except Exception as e:
                 st.error(f"Erreur pour {product['name']}: {str(e)}")
                 continue
-        
+                
         return current_prices
         
     finally:
