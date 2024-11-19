@@ -14,8 +14,6 @@ import time
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
-import schedule
-
 # Configuration de base
 st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
 
