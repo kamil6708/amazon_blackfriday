@@ -155,6 +155,32 @@ class Database:
                 '''
                 return pd.read_sql_query(query, conn)
 
+def setup_driver():
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.binary_location = "/usr/bin/chromium"
+    
+    # Configuration pour Amazon France
+    chrome_options.add_argument('--lang=fr-FR')
+    chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    chrome_options.add_argument('accept-language=fr-FR,fr;q=0.9')
+    
+    # Ajouter des préférences de langue et région
+    chrome_options.add_experimental_option('prefs', {
+        'intl.accept_languages': 'fr-FR,fr',
+        'profile.default_content_settings.cookies': 1,
+        'profile.default_content_settings.geolocation': 1
+    })
+    
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
+    except Exception as e:
+        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
+        return None
 
 def handle_cookies(driver):
     try:
@@ -182,6 +208,15 @@ def change_location(driver, postal_code="94310"):
         apply_button = wait.until(EC.element_to_be_clickable((By.ID, "GLUXZipUpdate")))
         apply_button.click()
         time.sleep(2)
+        
+        # Gérer les popups potentiels après le changement de code postal
+        try:
+            done_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "a-popover-footer")))
+            done_button.click()
+            time.sleep(1)
+        except:
+            pass
+            
         return True
     except Exception:
         return False
@@ -211,7 +246,7 @@ def track_current_prices():
                         # Gestion des cookies et de la localisation
                         if not cookies_handled:
                             handle_cookies(driver)
-                            change_location(driver, "75001")  # Code postal de Paris
+                            change_location(driver, "94310")  # Utilisation du code postal 94310
                             cookies_handled = True
                             time.sleep(2)
 
@@ -228,7 +263,9 @@ def track_current_prices():
                                     EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                                 )
                                 price_text = element.get_attribute("textContent") or element.text
-                                price = float(price_text.replace("€", "").replace(",", ".").strip())
+                                # Nettoyage supplémentaire du texte du prix
+                                price_text = ''.join(filter(lambda x: x.isdigit() or x in ',.', price_text))
+                                price = float(price_text.replace(",", ".").strip())
                                 break
                             except:
                                 continue
@@ -253,41 +290,6 @@ def track_current_prices():
     finally:
         if driver:
             driver.quit()
-
-def setup_driver():
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.binary_location = "/usr/bin/chromium"
-    
-    # Ajouter des headers spécifiques pour Amazon France
-    chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-    chrome_options.add_argument('accept-language=fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7')
-    chrome_options.add_argument('accept=text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8')
-    
-    # Ajouter des cookies pour forcer la localisation France
-    chrome_options.add_argument('cookie="i18n-prefs=EUR; session-id-time=2082787201l; session-id=123-1234567-1234567; ubid-acbfr=123-1234567-1234567; lc-acbfr=fr_FR"')
-    
-    try:
-        driver = webdriver.Chrome(options=chrome_options)
-        
-        # Définir la géolocalisation sur la France
-        driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
-            "latitude": 48.8566,  # Paris latitude
-            "longitude": 2.3522,  # Paris longitude
-            "accuracy": 100
-        })
-        
-        # Forcer le pays et la langue
-        driver.execute_script("localStorage.setItem('country', 'FR')")
-        driver.execute_script("localStorage.setItem('language', 'fr')")
-        
-        return driver
-    except Exception as e:
-        st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
-        return None
 
 def main():
     st.title("📊 Suivi des Prix Amazon")
