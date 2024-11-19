@@ -200,19 +200,20 @@ def track_current_prices():
             try:
                 for attempt in range(3):
                     try:
-                        driver.get(product['url'])
+                        # Forcer l'URL en .fr
+                        url = product['url']
+                        if 'amazon.' in url and not 'amazon.fr' in url:
+                            url = url.replace('amazon.com', 'amazon.fr')
+                        
+                        driver.get(url)
                         time.sleep(5)
                         
+                        # Gestion des cookies et de la localisation
                         if not cookies_handled:
-                            try:
-                                cookie_button = WebDriverWait(driver, 10).until(
-                                    EC.element_to_be_clickable((By.ID, "sp-cc-accept"))
-                                )
-                                cookie_button.click()
-                                time.sleep(2)
-                                cookies_handled = True
-                            except:
-                                pass
+                            handle_cookies(driver)
+                            change_location(driver, "75001")  # Code postal de Paris
+                            cookies_handled = True
+                            time.sleep(2)
 
                         selectors = [
                             ".a-price .a-offscreen",
@@ -260,10 +261,29 @@ def setup_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.binary_location = "/usr/bin/chromium"
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Ajouter des headers spécifiques pour Amazon France
+    chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    chrome_options.add_argument('accept-language=fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7')
+    chrome_options.add_argument('accept=text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8')
+    
+    # Ajouter des cookies pour forcer la localisation France
+    chrome_options.add_argument('cookie="i18n-prefs=EUR; session-id-time=2082787201l; session-id=123-1234567-1234567; ubid-acbfr=123-1234567-1234567; lc-acbfr=fr_FR"')
     
     try:
         driver = webdriver.Chrome(options=chrome_options)
+        
+        # Définir la géolocalisation sur la France
+        driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
+            "latitude": 48.8566,  # Paris latitude
+            "longitude": 2.3522,  # Paris longitude
+            "accuracy": 100
+        })
+        
+        # Forcer le pays et la langue
+        driver.execute_script("localStorage.setItem('country', 'FR')")
+        driver.execute_script("localStorage.setItem('language', 'fr')")
+        
         return driver
     except Exception as e:
         st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
