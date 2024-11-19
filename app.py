@@ -11,19 +11,14 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import plotly.express as px
-import schedule
 
-# ========================================================
 # Configuration de base
-# ========================================================
 st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
 
-# ========================================================
 # Constantes
-# ========================================================
 PRODUCTS = {
     "manette": {
         "url": "https://www.amazon.fr/Manette-Xbox-rouge-sans-Fil/dp/B08SRMPBRF/",
@@ -43,9 +38,6 @@ PRODUCTS = {
     }
 }
 
-# ========================================================
-# Classe Database - Gestion de la base de données
-# ========================================================
 class Database:
     def __init__(self):
         self.is_local = 'DATABASE_URL' not in os.environ
@@ -91,6 +83,7 @@ class Database:
                         url TEXT NOT NULL
                     )
                 ''')
+                
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS prices (
                         id SERIAL PRIMARY KEY,
@@ -99,6 +92,7 @@ class Database:
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
+                
                 for product_info in PRODUCTS.values():
                     cursor.execute('''
                         INSERT INTO products (name, url)
@@ -128,6 +122,7 @@ class Database:
                             SELECT id FROM products WHERE name = %s
                         ''', (price_info['Produit'],))
                         product_id = cursor.fetchone()[0]
+                        
                         cursor.execute('''
                             INSERT INTO prices (product_id, price)
                             VALUES (%s, %s)
@@ -160,9 +155,6 @@ class Database:
                 '''
                 return pd.read_sql_query(query, conn)
 
-# ========================================================
-# Fonctions pour Web Scraping avec Selenium
-# ========================================================
 def setup_driver():
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
@@ -217,6 +209,7 @@ def change_location(driver, postal_code="94310"):
         apply_button.click()
         time.sleep(2)
         
+        # Gérer les popups potentiels après le changement de code postal
         try:
             done_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "a-popover-footer")))
             done_button.click()
@@ -240,78 +233,109 @@ def track_current_prices():
     try:
         for product in PRODUCTS.values():
             try:
-                url = product['url']
-                driver.get(url)
-                time.sleep(5)
-
-                # Gestion des cookies et localisation
-                if not cookies_handled:
-                    handle_cookies(driver)
-                    change_location(driver, "94310")
-                    cookies_handled = True
-                    time.sleep(2)
-
-                # Sélecteurs pour récupérer le prix
-                selectors = [
-                    ".a-price .a-offscreen",
-                    "span.a-price-whole",
-                    "#corePrice_feature_div .a-price-whole"
-                ]
-
-                price = None
-                for selector in selectors:
+                for attempt in range(3):
                     try:
-                        element = WebDriverWait(driver, 10).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                        )
-                        price_text = element.get_attribute("textContent") or element.text
-                        price_text = ''.join(filter(lambda x: x.isdigit() or x in ',.', price_text))
-                        price = float(price_text.replace(",", ".").strip())
-                        break
-                    except:
-                        continue
+                        # Forcer l'URL en .fr
+                        url = product['url']
+                        if 'amazon.' in url and not 'amazon.fr' in url:
+                            url = url.replace('amazon.com', 'amazon.fr')
+                        
+                        driver.get(url)
+                        time.sleep(5)
+                        
+                        # Gestion des cookies et de la localisation
+                        if not cookies_handled:
+                            handle_cookies(driver)
+                            change_location(driver, "94310")  # Utilisation du code postal 94310
+                            cookies_handled = True
+                            time.sleep(2)
 
-                if price:
-                    current_prices.append({"Produit": product["name"], "Prix": price})
-                    break
+                        selectors = [
+                            ".a-price .a-offscreen",
+                            "span.a-price-whole",
+                            "#corePrice_feature_div .a-price-whole"
+                        ]
+                        
+                        price = None
+                        for selector in selectors:
+                            try:
+                                element = WebDriverWait(driver, 10).until(
+                                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                                )
+                                price_text = element.get_attribute("textContent") or element.text
+                                # Nettoyage supplémentaire du texte du prix
+                                price_text = ''.join(filter(lambda x: x.isdigit() or x in ',.', price_text))
+                                price = float(price_text.replace(",", ".").strip())
+                                break
+                            except:
+                                continue
+                                
+                        if price:
+                            current_prices.append({
+                                'Produit': product['name'],
+                                'Prix': round(price, 2)
+                            })
+                            break
+                            
+                    except Exception as e:
+                        if attempt == 2:
+                            st.error(f"Erreur pour {product['name']}: {str(e)}")
+                            
             except Exception as e:
-                st.error(f"Erreur lors de la récupération pour {product['name']}: {e}")
+                st.error(f"Erreur pour {product['name']}: {str(e)}")
                 continue
+                
+        return current_prices
+        
     finally:
-        driver.quit()
-
-    return current_prices
-
+        if driver:
+            driver.quit()
 
 def main():
-    st.title("Suivi des Prix Amazon")
-    
-    # Instancier la base de données
+    st.title("📊 Suivi des Prix Amazon")
+
     db = Database()
 
-    # Suivi des prix
-    if st.button("Suivre les prix"):
+    if st.button("🔄 Actualiser les prix"):
         with st.spinner("Récupération des prix en cours..."):
-            prices = track_current_prices()
-            if prices:
-                db.save_prices(prices)
-                st.success("Prix sauvegardés avec succès!")
-            else:
-                st.warning("Aucun prix récupéré.")
+            current_prices = track_current_prices()
+            if current_prices:
+                db.save_prices(current_prices)
+                st.success("Prix mis à jour avec succès!")
 
-    # Afficher l'historique des prix
-    if st.button("Afficher l'historique"):
-        with st.spinner("Chargement des données..."):
-            history = db.get_price_history()
-            st.dataframe(history)
-            fig = px.line(
-                history, 
-                x="timestamp", 
-                y="price", 
-                color="name", 
-                title="Historique des prix"
-            )
-            st.plotly_chart(fig)
+    display_price_history(db)
+
+def display_price_history(db):
+    history_df = db.get_price_history()
+    
+    if not history_df.empty:
+        history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
+        
+        st.header("💰 Prix actuels")
+        latest_prices = history_df.groupby('name').first().reset_index()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.dataframe(latest_prices[['name', 'price']], hide_index=True)
+        with col2:
+            total = latest_prices['price'].sum()
+            st.metric("Total du panier", f"{total:.2f}€")
+        
+        st.header("📈 Évolution des prix")
+        fig = px.line(history_df, 
+                     x='timestamp', 
+                     y='price', 
+                     color='name',
+                     title="Évolution des prix dans le temps")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.header("📋 Historique complet")
+        st.dataframe(
+            history_df.sort_values('timestamp', ascending=False),
+            hide_index=True
+        )
+    else:
+        st.info("Aucun historique de prix disponible. Cliquez sur 'Actualiser les prix' pour commencer le suivi.")
 
 if __name__ == "__main__":
     main()
