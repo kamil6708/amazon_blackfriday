@@ -240,39 +240,78 @@ def track_current_prices():
     try:
         for product in PRODUCTS.values():
             try:
-                for attempt in range(3):
-                    try:
-                        url = product['url']
-                        if 'amazon.' in url and not 'amazon.fr' in url:
-                            url = url.replace('amazon.com', 'amazon.fr')
-                        
-                        driver.get(url)
-                        time.sleep(5)
-                        
-                        if not cookies_handled:
-                            handle_cookies(driver)
-                            change_location(driver, "94310")
-                            cookies_handled = True
-                            time.sleep(2)
+                url = product['url']
+                driver.get(url)
+                time.sleep(5)
 
-                        selectors = [
-                            ".a-price .a-offscreen",
-                            "span.a-price-whole",
-                            "#corePrice_feature_div .a-price-whole"
-                        ]
-                        
-                        price = None
-                        for selector in selectors:
-                            try:
-                                element = WebDriverWait(driver, 10).until(
-                                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                                )
-                                price_text = element.get_attribute("textContent") or element.text
-                                price_text = ''.join(filter(lambda x: x.isdigit() or x in ',.', price_text))
-                                price = float(price_text.replace(",", ".").strip())
-                                break
-                            except:
-                                continue
+                # Gestion des cookies et localisation
+                if not cookies_handled:
+                    handle_cookies(driver)
+                    change_location(driver, "94310")
+                    cookies_handled = True
+                    time.sleep(2)
+
+                # Sélecteurs pour récupérer le prix
+                selectors = [
+                    ".a-price .a-offscreen",
+                    "span.a-price-whole",
+                    "#corePrice_feature_div .a-price-whole"
+                ]
+
+                price = None
+                for selector in selectors:
+                    try:
+                        element = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                        )
+                        price_text = element.get_attribute("textContent") or element.text
+                        price_text = ''.join(filter(lambda x: x.isdigit() or x in ',.', price_text))
+                        price = float(price_text.replace(",", ".").strip())
+                        break
+                    except:
+                        continue
+
+                if price:
+                    current_prices.append({"Produit": product["name"], "Prix": price})
+                    break
+            except Exception as e:
+                st.error(f"Erreur lors de la récupération pour {product['name']}: {e}")
+                continue
+    finally:
+        driver.quit()
+
+    return current_prices
+
+
+def main():
+    st.title("Suivi des Prix Amazon")
+    
+    # Instancier la base de données
+    db = Database()
+
+    # Suivi des prix
+    if st.button("Suivre les prix"):
+        with st.spinner("Récupération des prix en cours..."):
+            prices = track_current_prices()
+            if prices:
+                db.save_prices(prices)
+                st.success("Prix sauvegardés avec succès!")
+            else:
+                st.warning("Aucun prix récupéré.")
+
+    # Afficher l'historique des prix
+    if st.button("Afficher l'historique"):
+        with st.spinner("Chargement des données..."):
+            history = db.get_price_history()
+            st.dataframe(history)
+            fig = px.line(
+                history, 
+                x="timestamp", 
+                y="price", 
+                color="name", 
+                title="Historique des prix"
+            )
+            st.plotly_chart(fig)
 
 if __name__ == "__main__":
     main()
