@@ -16,10 +16,14 @@ import pandas as pd
 import plotly.express as px
 import schedule
 
+# ========================================================
 # Configuration de base
+# ========================================================
 st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
 
+# ========================================================
 # Constantes
+# ========================================================
 PRODUCTS = {
     "manette": {
         "url": "https://www.amazon.fr/Manette-Xbox-rouge-sans-Fil/dp/B08SRMPBRF/",
@@ -39,6 +43,9 @@ PRODUCTS = {
     }
 }
 
+# ========================================================
+# Classe Database - Gestion de la base de données
+# ========================================================
 class Database:
     def __init__(self):
         self.is_local = 'DATABASE_URL' not in os.environ
@@ -84,7 +91,6 @@ class Database:
                         url TEXT NOT NULL
                     )
                 ''')
-                
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS prices (
                         id SERIAL PRIMARY KEY,
@@ -93,7 +99,6 @@ class Database:
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
-                
                 for product_info in PRODUCTS.values():
                     cursor.execute('''
                         INSERT INTO products (name, url)
@@ -123,7 +128,6 @@ class Database:
                             SELECT id FROM products WHERE name = %s
                         ''', (price_info['Produit'],))
                         product_id = cursor.fetchone()[0]
-                        
                         cursor.execute('''
                             INSERT INTO prices (product_id, price)
                             VALUES (%s, %s)
@@ -156,6 +160,9 @@ class Database:
                 '''
                 return pd.read_sql_query(query, conn)
 
+# ========================================================
+# Fonctions pour Web Scraping avec Selenium
+# ========================================================
 def setup_driver():
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
@@ -210,7 +217,6 @@ def change_location(driver, postal_code="94310"):
         apply_button.click()
         time.sleep(2)
         
-        # Gérer les popups potentiels après le changement de code postal
         try:
             done_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "a-popover-footer")))
             done_button.click()
@@ -267,132 +273,6 @@ def track_current_prices():
                                 break
                             except:
                                 continue
-                                
-                        if price:
-                            current_prices.append({
-                                'Produit': product['name'],
-                                'Prix': round(price, 2)
-                            })
-                            break
-                            
-                    except Exception as e:
-                        if attempt == 2:
-                            st.error(f"Erreur pour {product['name']}: {str(e)}")
-                            
-            except Exception as e:
-                st.error(f"Erreur pour {product['name']}: {str(e)}")
-                continue
-                
-        return current_prices
-        
-    finally:
-        if driver:
-            driver.quit()
 
-def should_update_price(db, product_name, new_price):
-    """Vérifie si le prix a changé depuis la dernière mise à jour"""
-    history_df = db.get_price_history()
-    if history_df.empty:
-        return True
-    
-    latest_price = history_df[history_df['name'] == product_name].iloc[0]['price'] if not history_df[history_df['name'] == product_name].empty else None
-    
-    if latest_price is None or abs(latest_price - new_price) > 0.01:  # Différence de plus d'un centime
-        return True
-    return False
-
-def auto_check_prices():
-    """Vérifie automatiquement les prix et ne les sauvegarde que s'ils ont changé"""
-    db = Database()
-    current_prices = track_current_prices()
-    
-    if current_prices:
-        prices_changed = False
-        for price_info in current_prices:
-            if should_update_price(db, price_info['Produit'], price_info['Prix']):
-                prices_changed = True
-                break
-        
-        if prices_changed:
-            db.save_prices(current_prices)
-            now = datetime.now().strftime("%H:%M:%S")
-            st.toast(f"🔄 Prix mis à jour à {now}")
-        else:
-            st.toast("📊 Pas de changement de prix détecté")
-
-def display_price_history(db):
-    history_df = db.get_price_history()
-    
-    if not history_df.empty:
-        history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
-        
-        st.header("💰 Prix actuels")
-        latest_prices = history_df.groupby('name').first().reset_index()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.dataframe(latest_prices[['name', 'price']], hide_index=True)
-        with col2:
-            total = latest_prices['price'].sum()
-            st.metric("Total du panier", f"{total:.2f}€")
-        
-        st.header("📈 Évolution des prix")
-        fig = px.line(history_df, 
-                     x='timestamp', 
-                     y='price', 
-                     color='name',
-                     title="Évolution des prix dans le temps")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.header("📋 Historique complet")
-        st.dataframe(
-            history_df.sort_values('timestamp', ascending=False),
-            hide_index=True
-        )
-    else:
-        st.info("Aucun historique de prix disponible. Cliquez sur 'Actualiser les prix' pour commencer le suivi.")
-
-def main():
-    st.title("📊 Suivi des Prix Amazon")
-
-    # Configuration dans la barre latérale
-    with st.sidebar:
-        st.header("⚙️ Configuration")
-        check_interval = st.slider(
-            "Intervalle de vérification (minutes)",
-            min_value=5,
-            max_value=60,
-            value=15,
-            step=5
-        )
-        auto_check = st.toggle("Activer la vérification automatique", value=True)
-
-    # Conteneur pour le statut
-    status_container = st.empty()
-
-    db = Database()
-
-    if auto_check:
-        # Utiliser st.empty() pour mettre à jour dynamiquement
-        last_check = st.empty()
-        next_check = st.empty()
-        
-        while True:
-            current_time = datetime.now()
-            last_check.write(f"🕐 Dernière vérification : {current_time.strftime('%H:%M:%S')}")
-            
-            # Exécuter la vérification
-            auto_check_prices()
-            
-            # Calculer et afficher le prochain check
-            next_time = current_time + timedelta(minutes=check_interval)
-            next_check.write(f"⏰ Prochaine vérification : {next_time.strftime('%H:%M:%S')}")
-            
-            # Mettre à jour l'affichage
-            display_price_history(db)
-            
-            # Attendre l'intervalle configuré
-            time.sleep(check_interval * 60)
-    else:
-        if st.button("🔄 Actualiser les prix"):
-            with st.spinner("Récupération des prix en cours..."):
+if __name__ == "__main__":
+    main()
