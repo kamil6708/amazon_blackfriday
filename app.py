@@ -11,9 +11,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
+import schedule
 
 # Configuration de base
 st.set_page_config(page_title="Suivi des Prix Amazon", layout="wide")
@@ -83,7 +84,6 @@ class Database:
                         url TEXT NOT NULL
                     )
                 ''')
-                
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS prices (
                         id SERIAL PRIMARY KEY,
@@ -92,7 +92,6 @@ class Database:
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
-                
                 for product_info in PRODUCTS.values():
                     cursor.execute('''
                         INSERT INTO products (name, url)
@@ -122,7 +121,6 @@ class Database:
                             SELECT id FROM products WHERE name = %s
                         ''', (price_info['Produit'],))
                         product_id = cursor.fetchone()[0]
-                        
                         cursor.execute('''
                             INSERT INTO prices (product_id, price)
                             VALUES (%s, %s)
@@ -181,7 +179,6 @@ def setup_driver():
     except Exception as e:
         st.error(f"Erreur lors de l'initialisation du driver: {str(e)}")
         return None
-
 def handle_cookies(driver):
     try:
         wait = WebDriverWait(driver, 10)
@@ -209,7 +206,6 @@ def change_location(driver, postal_code="94310"):
         apply_button.click()
         time.sleep(2)
         
-        # Gérer les popups potentiels après le changement de code postal
         try:
             done_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "a-popover-footer")))
             done_button.click()
@@ -235,7 +231,6 @@ def track_current_prices():
             try:
                 for attempt in range(3):
                     try:
-                        # Forcer l'URL en .fr
                         url = product['url']
                         if 'amazon.' in url and not 'amazon.fr' in url:
                             url = url.replace('amazon.com', 'amazon.fr')
@@ -243,10 +238,9 @@ def track_current_prices():
                         driver.get(url)
                         time.sleep(5)
                         
-                        # Gestion des cookies et de la localisation
                         if not cookies_handled:
                             handle_cookies(driver)
-                            change_location(driver, "94310")  # Utilisation du code postal 94310
+                            change_location(driver, "94310")
                             cookies_handled = True
                             time.sleep(2)
 
@@ -263,7 +257,6 @@ def track_current_prices():
                                     EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                                 )
                                 price_text = element.get_attribute("textContent") or element.text
-                                # Nettoyage supplémentaire du texte du prix
                                 price_text = ''.join(filter(lambda x: x.isdigit() or x in ',.', price_text))
                                 price = float(price_text.replace(",", ".").strip())
                                 break
@@ -291,19 +284,36 @@ def track_current_prices():
         if driver:
             driver.quit()
 
-def main():
-    st.title("📊 Suivi des Prix Amazon")
+def should_update_price(db, product_name, new_price):
+    """Vérifie si le prix a changé depuis la dernière mise à jour"""
+    history_df = db.get_price_history()
+    if history_df.empty:
+        return True
+    
+    latest_price = history_df[history_df['name'] == product_name].iloc[0]['price'] if not history_df[history_df['name'] == product_name].empty else None
+    
+    if latest_price is None or abs(latest_price - new_price) > 0.01:  # Différence de plus d'un centime
+        return True
+    return False
 
+def auto_check_prices():
+    """Vérifie automatiquement les prix et ne les sauvegarde que s'ils ont changé"""
     db = Database()
-
-    if st.button("🔄 Actualiser les prix"):
-        with st.spinner("Récupération des prix en cours..."):
-            current_prices = track_current_prices()
-            if current_prices:
-                db.save_prices(current_prices)
-                st.success("Prix mis à jour avec succès!")
-
-    display_price_history(db)
+    current_prices = track_current_prices()
+    
+    if current_prices:
+        prices_changed = False
+        for price_info in current_prices:
+            if should_update_price(db, price_info['Produit'], price_info['Prix']):
+                prices_changed = True
+                break
+        
+        if prices_changed:
+            db.save_prices(current_prices)
+            now = datetime.now().strftime("%H:%M:%S")
+            st.toast(f"🔄 Prix mis à jour à {now}")
+        else:
+            st.toast("📊 Pas de changement de prix détecté")
 
 def display_price_history(db):
     history_df = db.get_price_history()
@@ -336,6 +346,57 @@ def display_price_history(db):
         )
     else:
         st.info("Aucun historique de prix disponible. Cliquez sur 'Actualiser les prix' pour commencer le suivi.")
+
+def main():
+    st.title("📊 Suivi des Prix Amazon")
+
+    # Configuration dans la barre latérale
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        check_interval = st.slider(
+            "Intervalle de vérification (minutes)",
+            min_value=5,
+            max_value=60,
+            value=15,
+            step=5
+        )
+        auto_check = st.toggle("Activer la vérification automatique", value=True)
+
+    # Conteneur pour le statut
+    status_container = st.empty()
+
+    db = Database()
+
+    if auto_check:
+        # Utiliser st.empty() pour mettre à jour dynamiquement
+        last_check = st.empty()
+        next_check = st.empty()
+        
+        while True:
+            current_time = datetime.now()
+            last_check.write(f"🕐 Dernière vérification : {current_time.strftime('%H:%M:%S')}")
+            
+            # Exécuter la vérification
+            auto_check_prices()
+            
+            # Calculer et afficher le prochain check
+            next_time = current_time + timedelta(minutes=check_interval)
+            next_check.write(f"⏰ Prochaine vérification : {next_time.strftime('%H:%M:%S')}")
+            
+            # Mettre à jour l'affichage
+            display_price_history(db)
+            
+            # Attendre l'intervalle configuré
+            time.sleep(check_interval * 60)
+    else:
+        if st.button("🔄 Actualiser les prix"):
+            with st.spinner("Récupération des prix en cours..."):
+                current_prices = track_current_prices()
+                if current_prices:
+                    db.save_prices(current_prices)
+                    st.success("Prix mis à jour avec succès!")
+
+        display_price_history(db)
 
 if __name__ == "__main__":
     main()
