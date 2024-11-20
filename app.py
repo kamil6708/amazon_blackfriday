@@ -39,6 +39,10 @@ PRODUCTS = {
     "sisma_case": {
         "url": "https://www.amazon.fr/sisma-Rangement-Compatible-Pochette-Transport/dp/B0CF9B16DV/",
         "name": "Étui Sisma Xbox Series"
+    },
+    "Venom": {
+        "url": "https://www.amazon.fr/Venom-Universal-Gaming-Controller-Switch/dp/B09RTNNS8R/",
+        "name": "Venom Étui de transport pour contrôleur de jeu"
     }
 }
 
