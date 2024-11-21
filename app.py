@@ -28,21 +28,9 @@ PRODUCTS = {
         "url": "https://www.amazon.fr/Timetec-PC4-25600-Unbuffered-Compatible-Notebook/dp/B098TYN671/",
         "name": "RAM Timetec 32GB"
     },
-    "housse": {
-        "url": "https://www.amazon.fr/eXtremeRate-Antid%C3%A9rapante-Protection-Ergonomique-Capuchons-Gris/dp/B08LZB4LKR/",
-        "name": "Housse eXtremeRate Grip"
-    },
     "kit_charge": {
         "url": "https://www.amazon.fr/Xbox-Play-Charge-Kit-voor/dp/B08FCXLB8Z/",
         "name": "Kit charge Xbox Series"
-    },
-    "sisma_case": {
-        "url": "https://www.amazon.fr/sisma-Rangement-Compatible-Pochette-Transport/dp/B0CF9B16DV/",
-        "name": "Étui Sisma Xbox Series"
-    },
-    "Venom": {
-        "url": "https://www.amazon.fr/Venom-Universal-Gaming-Controller-Switch/dp/B09RTNNS8R/",
-        "name": "Venom Étui de transport pour contrôleur de jeu"
     }
 }
 
